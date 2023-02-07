@@ -1,0 +1,11 @@
+# Python environment
+.venv/
+venv/
+
+# Default output
+out.mp4
+_tmp.mp4
+out/
+
+# Input/Storage folder
+input/

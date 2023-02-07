@@ -1,37 +1,20 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 from pathlib import Path
-from math import floor
+from argparse import ArgumentParser, Namespace
 import os
 
 import cv2
 import numpy as np
 
 
-# Frame Folders
-SOCIETY_FRAMES_DIR = Path('Society Frames')
-ORIGINAL_FRAMES_DIR = Path('Original Frames')
-
-# OP Video File
-#Input original video file here
-OP_FILE = Path('')
-
-# Frame Timing File
-FRAME_TIMINGS_FILE = Path('frame-timings.txt')
-
-# Video Framerate
-FRAMERATE = 23.976
-
-# Video Frame res
-VIDEO_RESOLUTION = (1920, 1080)
-
-def calculate_frame_durations(total_frames: int) -> Dict[int, int]:
-    with open(FRAME_TIMINGS_FILE, 'r') as f:
+def calculate_frame_durations(total_frames: int, timing_file: Path) -> Dict[int, int]:
+    with open(timing_file, 'r') as f:
         frame_timings = [int(l.strip()) for l in f.readlines()]
 
     frame_durations: Dict[int, int] = {}
 
-    # Black frame starts video
+    # Black frame starts video.
     frame_durations[0] = frame_timings[0]
 
     # Calculate duration of each frame.
@@ -47,19 +30,25 @@ def calculate_frame_durations(total_frames: int) -> Dict[int, int]:
 
     return frame_durations
 
-def main() -> None:
+
+def main(args: Namespace) -> None:
+    # Load paths.
+    original_frames_path = Path(args.original_frames_dir)
+    society_frames_path = Path(args.society_frames_dir)
+    timings_file_path = Path(args.timings_file)
+    op_file_path = Path(args.original_video)
     # Load original video.
-    video_original = cv2.VideoCapture(str(OP_FILE))
+    video_original = cv2.VideoCapture(str(op_file_path))
     total_frames = int(video_original.get(cv2.CAP_PROP_FRAME_COUNT))
 
     print('Loading durations.')
     # Calculate the duration to hold each frame.
-    frame_durations = calculate_frame_durations(total_frames)
+    frame_durations = calculate_frame_durations(total_frames, timings_file_path)
 
     # Load original frames.
     print('Loading frames.')
     original_frames: Dict[int, cv2.Mat] = {}
-    for frame_image in ORIGINAL_FRAMES_DIR.glob('*'):
+    for frame_image in original_frames_path.glob('*'):
         frame = cv2.imread(str(frame_image))
         original_frames[int(frame_image.stem)] = frame
 
@@ -68,9 +57,9 @@ def main() -> None:
 
     # Load society frames.
     society_frames: Dict[int, cv2.Mat] = {}
-    for frame_image in SOCIETY_FRAMES_DIR.glob('*'):
+    for frame_image in society_frames_path.glob('*'):
         original_frame = cv2.imread(str(frame_image))
-        scaled_frame = cv2.resize(original_frame, VIDEO_RESOLUTION,interpolation = cv2.INTER_AREA)
+        scaled_frame = cv2.resize(original_frame, args.resolution, interpolation=cv2.INTER_AREA)
         society_frames[int(frame_image.stem)] = scaled_frame
 
     # Create video frame list.
@@ -85,14 +74,14 @@ def main() -> None:
     # Write video out to file ('_tmp.mp4') with opencv.
     video_fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     video_res = original_frames[0].shape[:2][::-1]
-    video_writer = cv2.VideoWriter('_tmp.mp4', video_fourcc, FRAMERATE, video_res, True)
+    video_writer = cv2.VideoWriter('_tmp.mp4', video_fourcc,  args.framerate, video_res, True)
     for frame in video:
         video_writer.write(frame)
     video_writer.release()
 
-    print('Adding aduio.')
+    print('Adding audio.')
     # Combine video and audio with FFMPEG
-    command = 'ffmpeg -i {0} -i _tmp.mp4 -map 0:a:0 -map 1:v:0 "{1}"'.format(str(OP_FILE), 'Anisoc Draws - Colors.mp4')
+    command = 'ffmpeg -i {0} -i _tmp.mp4 -map 0:a:0 -map 1:v:0 "{1}"'.format(str(op_file_path), args.output)
     os.system(command)
 
     # Cleanup
@@ -102,4 +91,14 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    main()
+    parser = ArgumentParser()
+    parser.add_argument('original_frames_dir', type=str)
+    parser.add_argument('society_frames_dir', type=str)
+    parser.add_argument('timings_file', type=str)
+    parser.add_argument('original_video', type=str)
+    parser.add_argument('-o', '--output', type=str, default='out.mp4')
+    parser.add_argument('-fr', '--framerate', type=float, default=23.976)
+    parser.add_argument('-r', '--resolution', type=int, nargs=2, default=(1920, 1080))
+
+    args = parser.parse_args()
+    main(args)
